@@ -7,3 +7,4 @@ _scratch/
 Session.vim
 /.tox/
 .idea/
+tests/test_files/hello_out.docx
