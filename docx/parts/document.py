@@ -45,6 +45,13 @@ class DocumentPart(XmlPart):
         """
         return self.body.add_table(rows, cols)
 
+    def insert_table(self, rows, cols, to):
+        """
+        Return a table having *rows* rows and *cols* columns, newly inserted
+        to the main document story.
+        """
+        return self.body.insert_table(rows, cols, to)
+
     @lazyproperty
     def body(self):
         """

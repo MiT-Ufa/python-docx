@@ -108,6 +108,17 @@ class Document(object):
             table.style = style
         return table
 
+    def insert_table(self, rows, cols, paragraph, style='LightShading-Accent1'):
+        """
+        Insert a table into the paragraph having row and column
+        counts of *rows* and *cols* respectively and table style of
+        *style*. If *style* is |None|, a table with no style is produced.
+        """
+        table = self._document_part.insert_table(rows, cols, paragraph)
+        if style:
+            table.style = style
+        return table
+
     @property
     def core_properties(self):
         """

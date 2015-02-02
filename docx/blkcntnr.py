@@ -52,6 +52,22 @@ class BlockItemContainer(Parented):
             table.add_row()
         return table
 
+    def insert_table(self, rows, cols, to):
+        """
+        Return a newly inserted table having *rows* rows and *cols* cols,
+        inserted to the content in this container.
+        """
+        from .table import Table
+        tbl = self._element.add_tbl()
+        table = Table(tbl, self)
+        for i in xrange(cols):
+            table.add_column()
+        for i in xrange(rows):
+            table.add_row()
+
+        to.insert_table(tbl)
+        return table
+
     @property
     def paragraphs(self):
         """
