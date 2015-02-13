@@ -7,6 +7,7 @@ The |Table| object and related proxy classes.
 from __future__ import absolute_import, print_function, unicode_literals
 
 from .blkcntnr import BlockItemContainer
+from .enum.style import WD_STYLE_TYPE
 from .oxml.simpletypes import ST_Merge
 from .shared import lazyproperty, Parented
 
@@ -86,7 +87,8 @@ class Table(Parented):
     @lazyproperty
     def columns(self):
         """
-        |_Columns| instance containing the sequence of rows in this table.
+        |_Columns| instance representing the sequence of columns in this
+        table.
         """
         return _Columns(self._tbl, self)
 
@@ -109,15 +111,25 @@ class Table(Parented):
     @property
     def style(self):
         """
-        String name of style to be applied to this table, e.g.
-        'LightShading-Accent1'. Name is derived by removing spaces from the
-        table style name displayed in the Word UI.
+        Read/write. A |_TableStyle| object representing the style applied to
+        this table. The default table style for the document (often `Normal
+        Table`) is returned if the table has no directly-applied style.
+        Assigning |None| to this property removes any directly-applied table
+        style causing it to inherit the default table style of the document.
+        Note that the style name of a table style differs slightly from that
+        displayed in the user interface; a hyphen, if it appears, must be
+        removed. For example, `Light Shading - Accent 1` becomes `Light
+        Shading Accent 1`.
         """
-        return self._tblPr.style
+        style_id = self._tbl.tblStyle_val
+        return self.part.get_style(style_id, WD_STYLE_TYPE.TABLE)
 
     @style.setter
-    def style(self, value):
-        self._tblPr.style = value
+    def style(self, style_or_name):
+        style_id = self.part.get_style_id(
+            style_or_name, WD_STYLE_TYPE.TABLE
+        )
+        self._tbl.tblStyle_val = style_id
 
     @property
     def table(self):
@@ -370,8 +382,8 @@ class _Row(Parented):
 
 class _Rows(Parented):
     """
-    Sequence of |_Row| instances corresponding to the rows in a table.
-    Supports ``len()``, iteration and indexed access.
+    Sequence of |_Row| objects corresponding to the rows in a table.
+    Supports ``len()``, iteration, indexed access, and slicing.
     """
     def __init__(self, tbl, parent):
         super(_Rows, self).__init__(parent)
@@ -381,12 +393,7 @@ class _Rows(Parented):
         """
         Provide indexed access, (e.g. 'rows[0]')
         """
-        try:
-            tr = self._tbl.tr_lst[idx]
-        except IndexError:
-            msg = "row index [%d] out of range" % idx
-            raise IndexError(msg)
-        return _Row(tr, self)
+        return list(self)[idx]
 
     def __iter__(self):
         return (_Row(tr, self) for tr in self._tbl.tr_lst)

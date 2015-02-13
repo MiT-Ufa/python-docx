@@ -9,7 +9,10 @@ can be found here:
    :titlesonly:
 
    WdAlignParagraph
+   WdBuiltinStyle
+   WdLineSpacing
    WdOrientation
    WdSectionStart
+   WdStyleType
    WdRowAlignment
    WdUnderline

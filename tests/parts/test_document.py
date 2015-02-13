@@ -11,14 +11,18 @@ import pytest
 from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml.parts.document import CT_Body, CT_Document
 from docx.oxml.section import CT_SectPr
-from docx.oxml.text import CT_R
+from docx.oxml.text.run import CT_R
 from docx.package import ImageParts, Package
 from docx.parts.document import _Body, DocumentPart, InlineShapes, Sections
 from docx.parts.image import ImagePart
+from docx.parts.styles import StylesPart
 from docx.section import Section
 from docx.shape import InlineShape
+from docx.styles.style import BaseStyle
+from docx.styles.styles import Styles
 from docx.table import Table
-from docx.text import Paragraph, Run
+from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from ..oxml.parts.unitdata.document import a_body, a_document
 from ..oxml.unitdata.text import a_p
@@ -52,6 +56,11 @@ class DescribeDocumentPart(object):
         document_part, tables_ = tables_fixture
         tables = document_part.tables
         assert tables is tables_
+
+    def it_provides_access_to_the_document_styles(self, styles_fixture):
+        document_part, styles_ = styles_fixture
+        styles = document_part.styles
+        assert styles is styles_
 
     def it_provides_access_to_the_inline_shapes_in_the_document(
             self, inline_shapes_fixture):
@@ -97,6 +106,42 @@ class DescribeDocumentPart(object):
         document, expected_id = next_id_fixture
         assert document.next_id == expected_id
 
+    def it_can_get_a_style_by_id(self, get_style_fixture):
+        document_part, style_id, style_type, style_ = get_style_fixture
+        style = document_part.get_style(style_id, style_type)
+        document_part.styles.get_by_id.assert_called_once_with(
+            style_id, style_type
+        )
+        assert style is style_
+
+    def it_can_get_the_id_of_a_style(self, get_style_id_fixture):
+        document_part, style_or_name, style_type, style_id_ = (
+            get_style_id_fixture
+        )
+        style_id = document_part.get_style_id(style_or_name, style_type)
+
+        document_part.styles.get_style_id.assert_called_once_with(
+            style_or_name, style_type
+        )
+        assert style_id is style_id_
+
+    def it_provides_access_to_its_styles_part_to_help(
+            self, styles_part_get_fixture):
+        document_part, styles_part_ = styles_part_get_fixture
+        styles_part = document_part._styles_part
+        document_part.part_related_by.assert_called_once_with(RT.STYLES)
+        assert styles_part is styles_part_
+
+    def it_creates_default_styles_part_if_not_present_to_help(
+            self, styles_part_create_fixture):
+        document_part, StylesPart_, styles_part_ = styles_part_create_fixture
+        styles_part = document_part._styles_part
+        StylesPart_.default.assert_called_once_with(document_part.package)
+        document_part.relate_to.assert_called_once_with(
+            styles_part_, RT.STYLES
+        )
+        assert styles_part is styles_part_
+
     # fixtures -------------------------------------------------------
 
     @pytest.fixture
@@ -121,7 +166,7 @@ class DescribeDocumentPart(object):
         return document_part, rows, cols, body_, table_
 
     @pytest.fixture
-    def body_fixture(self, request, _Body_):
+    def body_fixture(self, _Body_):
         document_elm = (
             a_document().with_nsdecls().with_child(
                 a_body())
@@ -129,6 +174,20 @@ class DescribeDocumentPart(object):
         body_elm = document_elm[0]
         document_part = DocumentPart(None, None, document_elm, None)
         return document_part, _Body_, body_elm
+
+    @pytest.fixture
+    def get_style_fixture(self, styles_prop_, style_):
+        document_part = DocumentPart(None, None, None, None)
+        style_id, style_type = 'Foobar', 1
+        styles_prop_.return_value.get_by_id.return_value = style_
+        return document_part, style_id, style_type, style_
+
+    @pytest.fixture
+    def get_style_id_fixture(self, styles_prop_):
+        document_part = DocumentPart(None, None, None, None)
+        style_or_name, style_type, style_id_ = 'Foo Bar', 1, 'FooBar'
+        styles_prop_.return_value.get_style_id.return_value = style_id_
+        return document_part, style_or_name, style_type, style_id_
 
     @pytest.fixture
     def inline_shapes_fixture(self, request, InlineShapes_):
@@ -161,10 +220,32 @@ class DescribeDocumentPart(object):
         return document_part, paragraphs_
 
     @pytest.fixture
-    def sections_fixture(self, request, Sections_):
+    def sections_fixture(self, Sections_):
         document_elm = a_document().with_nsdecls().element
         document = DocumentPart(None, None, document_elm, None)
         return document, document_elm, Sections_
+
+    @pytest.fixture
+    def styles_fixture(self, _styles_part_prop_, styles_part_, styles_):
+        document_part = DocumentPart(None, None, None, None)
+        _styles_part_prop_.return_value = styles_part_
+        styles_part_.styles = styles_
+        return document_part, styles_
+
+    @pytest.fixture
+    def styles_part_create_fixture(
+            self, package_, part_related_by_, StylesPart_, styles_part_,
+            relate_to_):
+        document_part = DocumentPart(None, None, None, package_)
+        part_related_by_.side_effect = KeyError
+        StylesPart_.default.return_value = styles_part_
+        return document_part, StylesPart_, styles_part_
+
+    @pytest.fixture
+    def styles_part_get_fixture(self, part_related_by_, styles_part_):
+        document_part = DocumentPart(None, None, None, None)
+        part_related_by_.return_value = styles_part_
+        return document_part, styles_part_
 
     @pytest.fixture
     def tables_fixture(self, document_part_body_, body_, tables_):
@@ -243,6 +324,10 @@ class DescribeDocumentPart(object):
         return instance_mock(request, list)
 
     @pytest.fixture
+    def part_related_by_(self, request):
+        return method_mock(request, DocumentPart, 'part_related_by')
+
+    @pytest.fixture
     def relate_to_(self, request, rId_):
         relate_to_ = method_mock(request, DocumentPart, 'relate_to')
         relate_to_.return_value = rId_
@@ -273,6 +358,32 @@ class DescribeDocumentPart(object):
     @pytest.fixture
     def start_type_(self, request):
         return instance_mock(request, int)
+
+    @pytest.fixture
+    def style_(self, request):
+        return instance_mock(request, BaseStyle)
+
+    @pytest.fixture
+    def styles_(self, request):
+        return instance_mock(request, Styles)
+
+    @pytest.fixture
+    def StylesPart_(self, request):
+        return class_mock(request, 'docx.parts.document.StylesPart')
+
+    @pytest.fixture
+    def styles_part_(self, request):
+        return instance_mock(request, StylesPart)
+
+    @pytest.fixture
+    def styles_prop_(self, request, styles_):
+        return property_mock(
+            request, DocumentPart, 'styles', return_value=styles_
+        )
+
+    @pytest.fixture
+    def _styles_part_prop_(self, request):
+        return property_mock(request, DocumentPart, '_styles_part')
 
     @pytest.fixture
     def table_(self, request):

@@ -17,11 +17,12 @@ from docx.opc.coreprops import CoreProperties
 from docx.package import Package
 from docx.parts.document import DocumentPart, InlineShapes
 from docx.parts.numbering import NumberingPart
-from docx.parts.styles import StylesPart
 from docx.section import Section
 from docx.shape import InlineShape
+from docx.styles.styles import Styles
 from docx.table import Table
-from docx.text import Paragraph, Run
+from docx.text.paragraph import Paragraph
+from docx.text.run import Run
 
 from .unitutil.mock import (
     instance_mock, class_mock, method_mock, property_mock, var_mock
@@ -54,11 +55,9 @@ class DescribeDocument(object):
             Document._open(docx_)
 
     def it_can_add_a_heading(self, add_heading_fixture):
-        document, add_paragraph_, paragraph_, text, level, style = (
-            add_heading_fixture
-        )
+        document, text, level, style, paragraph_ = add_heading_fixture
         paragraph = document.add_heading(text, level)
-        add_paragraph_.assert_called_once_with(text, style)
+        document.add_paragraph.assert_called_once_with(text, style)
         assert paragraph is paragraph_
 
     def it_should_raise_on_heading_level_out_of_range(self, document):
@@ -68,11 +67,11 @@ class DescribeDocument(object):
             document.add_heading(level=10)
 
     def it_can_add_a_paragraph(self, add_paragraph_fixture):
-        document, document_part_, text, style, paragraph_ = (
-            add_paragraph_fixture
-        )
+        document, text, style, paragraph_ = add_paragraph_fixture
         paragraph = document.add_paragraph(text, style)
-        document_part_.add_paragraph.assert_called_once_with(text, style)
+        document._document_part.add_paragraph.assert_called_once_with(
+            text, style
+        )
         assert paragraph is paragraph_
 
     def it_can_add_a_page_break(self, add_page_break_fixture):
@@ -100,12 +99,10 @@ class DescribeDocument(object):
         assert section is section_
 
     def it_can_add_a_table(self, add_table_fixture):
-        document, rows, cols, style, document_part_, expected_style, table_ = (
-            add_table_fixture
-        )
+        document, rows, cols, style, table_ = add_table_fixture
         table = document.add_table(rows, cols, style)
-        document_part_.add_table.assert_called_once_with(rows, cols)
-        assert table.style == expected_style
+        document._document_part.add_table.assert_called_once_with(rows, cols)
+        assert table.style == style
         assert table == table_
 
     def it_provides_access_to_the_document_inline_shapes(self, document):
@@ -132,10 +129,15 @@ class DescribeDocument(object):
         document.save(file_)
         package_.save.assert_called_once_with(file_)
 
-    def it_provides_access_to_the_core_properties(self, core_props_fixture):
+    def it_provides_access_to_its_core_properties(self, core_props_fixture):
         document, core_properties_ = core_props_fixture
         core_properties = document.core_properties
         assert core_properties is core_properties_
+
+    def it_provides_access_to_its_styles(self, styles_fixture):
+        document, styles_ = styles_fixture
+        styles = document.styles
+        assert styles is styles_
 
     def it_provides_access_to_the_numbering_part(self, num_part_get_fixture):
         document, document_part_, numbering_part_ = num_part_get_fixture
@@ -155,43 +157,29 @@ class DescribeDocument(object):
         )
         assert numbering_part is numbering_part_
 
-    def it_provides_access_to_the_styles_part(self, styles_part_get_fixture):
-        document, document_part_, styles_part_ = styles_part_get_fixture
-        styles_part = document.styles_part
-        document_part_.part_related_by.assert_called_once_with(RT.STYLES)
-        assert styles_part is styles_part_
-
-    def it_creates_styles_part_on_first_access_if_not_present(
-            self, styles_part_create_fixture):
-        document, StylesPart_, document_part_, styles_part_ = (
-            styles_part_create_fixture
-        )
-        styles_part = document.styles_part
-        StylesPart_.new.assert_called_once_with()
-        document_part_.relate_to.assert_called_once_with(
-            styles_part_, RT.STYLES
-        )
-        assert styles_part is styles_part_
-
     # fixtures -------------------------------------------------------
 
     @pytest.fixture(params=[
         ('',         None),
-        ('',         'Heading1'),
-        ('foo\rbar', 'BodyText'),
+        ('',         'Heading 1'),
+        ('foo\rbar', 'Body Text'),
     ])
-    def add_paragraph_fixture(
-            self, request, document, document_part_, paragraph_):
+    def add_paragraph_fixture(self, request, document, document_part_,
+                              paragraph_):
         text, style = request.param
-        return document, document_part_, text, style, paragraph_
+        return document, text, style, paragraph_
 
-    @pytest.fixture(params=[0, 1, 2, 5, 9])
-    def add_heading_fixture(
-            self, request, document, add_paragraph_, paragraph_):
-        level = request.param
+    @pytest.fixture(params=[
+        (0, 'Title'),
+        (1, 'Heading 1'),
+        (2, 'Heading 2'),
+        (9, 'Heading 9'),
+    ])
+    def add_heading_fixture(self, request, document, add_paragraph_,
+                            paragraph_):
+        level, style = request.param
         text = 'Spam vs. Bacon'
-        style = 'Title' if level == 0 else 'Heading%d' % level
-        return document, add_paragraph_, paragraph_, text, level, style
+        return document, text, level, style, paragraph_
 
     @pytest.fixture
     def add_page_break_fixture(
@@ -203,7 +191,7 @@ class DescribeDocument(object):
         document = Document()
         image_path_ = instance_mock(request, str, name='image_path_')
         width, height = 100, 200
-        class_mock(request, 'docx.text.Run', return_value=run_)
+        class_mock(request, 'docx.text.paragraph.Run', return_value=run_)
         run_.add_picture.return_value = picture_
         return (document, image_path_, width, height, run_, picture_)
 
@@ -211,14 +199,11 @@ class DescribeDocument(object):
     def add_section_fixture(self, document, start_type_, section_):
         return document, start_type_, section_
 
-    @pytest.fixture(params=[None, 'LightShading-Accent1', 'foobar'])
+    @pytest.fixture
     def add_table_fixture(self, request, document, document_part_, table_):
         rows, cols = 4, 2
-        style = expected_style = request.param
-        return (
-            document, rows, cols, style, document_part_, expected_style,
-            table_
-        )
+        style = 'Light Shading Accent 1'
+        return document, rows, cols, style, table_
 
     @pytest.fixture
     def core_props_fixture(self, document, core_properties_):
@@ -247,6 +232,11 @@ class DescribeDocument(object):
         file_ = instance_mock(request, str)
         document = Document()
         return document, package_, file_
+
+    @pytest.fixture
+    def styles_fixture(self, document, styles_):
+        document._document_part.styles = styles_
+        return document, styles_
 
     @pytest.fixture
     def tables_fixture(self, document, tables_):
@@ -362,25 +352,8 @@ class DescribeDocument(object):
         return instance_mock(request, int)
 
     @pytest.fixture
-    def StylesPart_(self, request, styles_part_):
-        StylesPart_ = class_mock(request, 'docx.api.StylesPart')
-        StylesPart_.new.return_value = styles_part_
-        return StylesPart_
-
-    @pytest.fixture
-    def styles_part_(self, request):
-        return instance_mock(request, StylesPart)
-
-    @pytest.fixture
-    def styles_part_create_fixture(
-            self, document, StylesPart_, document_part_, styles_part_):
-        document_part_.part_related_by.side_effect = KeyError
-        return document, StylesPart_, document_part_, styles_part_
-
-    @pytest.fixture
-    def styles_part_get_fixture(self, document, document_part_, styles_part_):
-        document_part_.part_related_by.return_value = styles_part_
-        return document, document_part_, styles_part_
+    def styles_(self, request):
+        return instance_mock(request, Styles)
 
     @pytest.fixture
     def table_(self, request):

@@ -20,10 +20,10 @@ def when_add_2x2_table_specifying_only_row_and_col_count(context):
     document.add_table(rows=2, cols=2)
 
 
-@when('I add a 2 x 2 table specifying style \'foobar\'')
-def when_add_2x2_table_specifying_style_foobar(context):
+@when('I add a 2 x 2 table specifying style \'{style_name}\'')
+def when_add_2x2_table_specifying_style_name(context, style_name):
     document = context.document
-    document.add_table(rows=2, cols=2, style='foobar')
+    document.add_table(rows=2, cols=2, style=style_name)
 
 
 @when('I add a heading specifying level={level_str}')
@@ -46,11 +46,15 @@ def when_add_page_break_to_document(context):
     document.add_page_break()
 
 
-@when('I add a paragraph specifying its style')
-def when_add_paragraph_specifying_style(context):
+@when('I add a paragraph specifying its style as a {kind}')
+def when_I_add_a_paragraph_specifying_its_style_as_a(context, kind):
     document = context.document
-    context.paragraph_style = 'barfoo'
-    document.add_paragraph(style=context.paragraph_style)
+    style = context.style = document.styles['Heading 1']
+    style_spec = {
+        'style object': style,
+        'style name':   'Heading 1',
+    }[kind]
+    document.add_paragraph(style=style_spec)
 
 
 @when('I add a paragraph specifying its text')
@@ -135,11 +139,10 @@ def then_last_p_contains_specified_text(context):
 
 
 @then('the last paragraph has the style I specified')
-def then_last_p_has_specified_style(context):
-    document = context.document
-    style = context.paragraph_style
-    p = document.paragraphs[-1]
-    assert p.style == style
+def then_the_last_paragraph_has_the_style_I_specified(context):
+    document, expected_style = context.document, context.style
+    paragraph = document.paragraphs[-1]
+    assert paragraph.style == expected_style
 
 
 @then('the last paragraph is the empty paragraph I added')
@@ -149,14 +152,10 @@ def then_last_p_is_empty_paragraph_added(context):
     assert p.text == ''
 
 
-@then('the style of the last paragraph is \'{style}\'')
-def then_style_of_last_paragraph_is_style(context, style):
+@then('the style of the last paragraph is \'{style_name}\'')
+def then_the_style_of_the_last_paragraph_is_style(context, style_name):
     document = context.document
-    p = document.paragraphs[-1]
-    assert p.style == style
-
-
-@then('the table style is \'{style}\'')
-def then_table_style_is_style(context, style):
-    table = context.table_
-    assert table.style == style
+    paragraph = document.paragraphs[-1]
+    assert paragraph.style.name == style_name, (
+        'got %s' % paragraph.style.name
+    )

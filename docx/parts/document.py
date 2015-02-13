@@ -17,6 +17,7 @@ from ..opc.part import XmlPart
 from ..section import Section
 from ..shape import InlineShape
 from ..shared import lazyproperty, Parented
+from .styles import StylesPart
 
 
 class DocumentPart(XmlPart):
@@ -72,6 +73,24 @@ class DocumentPart(XmlPart):
         rId = self.relate_to(image_part, RT.IMAGE)
         return (image_part, rId)
 
+    def get_style(self, style_id, style_type):
+        """
+        Return the style in this document matching *style_id*. Returns the
+        default style for *style_type* if *style_id* is |None| or does not
+        match a defined style of *style_type*.
+        """
+        return self.styles.get_by_id(style_id, style_type)
+
+    def get_style_id(self, style_or_name, style_type):
+        """
+        Return the style_id (|str|) of the style of *style_type* matching
+        *style_or_name*. Returns |None| if the style resolves to the default
+        style for *style_type* or if *style_or_name* is itself |None|. Raises
+        if *style_or_name* is a style of the wrong type or names a style not
+        present in the document.
+        """
+        return self.styles.get_style_id(style_or_name, style_type)
+
     @lazyproperty
     def inline_shapes(self):
         """
@@ -110,6 +129,14 @@ class DocumentPart(XmlPart):
         return Sections(self._element)
 
     @property
+    def styles(self):
+        """
+        A |Styles| object providing access to the styles in the styles part
+        of this document.
+        """
+        return self._styles_part.styles
+
+    @property
     def tables(self):
         """
         A list of |Table| instances corresponding to the tables in the
@@ -117,6 +144,19 @@ class DocumentPart(XmlPart):
         such as ``<w:ins>`` or ``<w:del>`` do not appear in this list.
         """
         return self.body.tables
+
+    @property
+    def _styles_part(self):
+        """
+        Instance of |StylesPart| for this document. Creates an empty styles
+        part if one is not present.
+        """
+        try:
+            return self.part_related_by(RT.STYLES)
+        except KeyError:
+            styles_part = StylesPart.default(self.package)
+            self.relate_to(styles_part, RT.STYLES)
+            return styles_part
 
 
 class _Body(BlockItemContainer):

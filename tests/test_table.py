@@ -8,12 +8,14 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import pytest
 
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import parse_xml
 from docx.oxml.table import CT_Tc
+from docx.parts.document import DocumentPart
 from docx.shared import Inches
 from docx.table import _Cell, _Column, _Columns, _Row, _Rows, Table
-from docx.text import Paragraph
+from docx.text.paragraph import Paragraph
 
 from .oxml.unitdata.table import a_gridCol, a_tbl, a_tblGrid, a_tc, a_tr
 from .oxml.unitdata.text import a_p
@@ -42,13 +44,20 @@ class DescribeTable(object):
         table.autofit = new_value
         assert table._tbl.xml == expected_xml
 
-    def it_knows_its_table_style(self, table_style_get_fixture):
-        table, style = table_style_get_fixture
-        assert table.style == style
+    def it_knows_its_table_style(self, style_get_fixture):
+        table, style_id_, style_ = style_get_fixture
+        style = table.style
+        table.part.get_style.assert_called_once_with(
+            style_id_, WD_STYLE_TYPE.TABLE
+        )
+        assert style is style_
 
-    def it_can_apply_a_table_style_by_name(self, table_style_set_fixture):
-        table, style_name, expected_xml = table_style_set_fixture
-        table.style = style_name
+    def it_can_change_its_table_style(self, style_set_fixture):
+        table, value, expected_xml = style_set_fixture
+        table.style = value
+        table.part.get_style_id.assert_called_once_with(
+            value, WD_STYLE_TYPE.TABLE
+        )
         assert table._tbl.xml == expected_xml
 
     def it_knows_it_is_the_table_its_children_belong_to(self, table_fixture):
@@ -220,34 +229,32 @@ class DescribeTable(object):
         return table, row_idx, expected_cells
 
     @pytest.fixture
+    def style_get_fixture(self, part_prop_):
+        style_id = 'Barbaz'
+        tbl_cxml = 'w:tbl/w:tblPr/w:tblStyle{w:val=%s}' % style_id
+        table = Table(element(tbl_cxml), None)
+        style_ = part_prop_.return_value.get_style.return_value
+        return table, style_id, style_
+
+    @pytest.fixture(params=[
+        ('w:tbl/w:tblPr',                         'Tbl A', 'TblA',
+         'w:tbl/w:tblPr/w:tblStyle{w:val=TblA}'),
+        ('w:tbl/w:tblPr/w:tblStyle{w:val=TblA}',  'Tbl B', 'TblB',
+         'w:tbl/w:tblPr/w:tblStyle{w:val=TblB}'),
+        ('w:tbl/w:tblPr/w:tblStyle{w:val=TblB}',  None,    None,
+         'w:tbl/w:tblPr'),
+    ])
+    def style_set_fixture(self, request, part_prop_):
+        tbl_cxml, value, style_id, expected_cxml = request.param
+        table = Table(element(tbl_cxml), None)
+        part_prop_.return_value.get_style_id.return_value = style_id
+        expected_xml = xml(expected_cxml)
+        return table, value, expected_xml
+
+    @pytest.fixture
     def table_fixture(self):
         table = Table(None, None)
         return table
-
-    @pytest.fixture(params=[
-        ('w:tbl/w:tblPr', None),
-        ('w:tbl/w:tblPr/w:tblStyle{w:val=foobar}', 'foobar'),
-    ])
-    def table_style_get_fixture(self, request):
-        tbl_cxml, expected_style = request.param
-        table = Table(element(tbl_cxml), None)
-        return table, expected_style
-
-    @pytest.fixture(params=[
-        ('w:tbl/w:tblPr', 'foobar',
-         'w:tbl/w:tblPr/w:tblStyle{w:val=foobar}'),
-        ('w:tbl/w:tblPr/w:tblStyle{w:val=foobar}', 'barfoo',
-         'w:tbl/w:tblPr/w:tblStyle{w:val=barfoo}'),
-        ('w:tbl/w:tblPr/w:tblStyle{w:val=foobar}', None,
-         'w:tbl/w:tblPr'),
-        ('w:tbl/w:tblPr', None,
-         'w:tbl/w:tblPr'),
-    ])
-    def table_style_set_fixture(self, request):
-        tbl_cxml, new_style, expected_cxml = request.param
-        table = Table(element(tbl_cxml), None)
-        expected_xml = xml(expected_cxml)
-        return table, new_style, expected_xml
 
     # fixture components ---------------------------------------------
 
@@ -258,6 +265,16 @@ class DescribeTable(object):
     @pytest.fixture
     def _column_count_(self, request):
         return property_mock(request, Table, '_column_count')
+
+    @pytest.fixture
+    def document_part_(self, request):
+        return instance_mock(request, DocumentPart)
+
+    @pytest.fixture
+    def part_prop_(self, request, document_part_):
+        return property_mock(
+            request, Table, 'part', return_value=document_part_
+        )
 
     @pytest.fixture
     def table(self):
@@ -678,6 +695,15 @@ class Describe_Rows(object):
             row = rows[idx]
             assert isinstance(row, _Row)
 
+    def it_provides_sliced_access_to_rows(self, slice_fixture):
+        rows, start, end, expected_count = slice_fixture
+        slice_of_rows = rows[start:end]
+        assert len(slice_of_rows) == expected_count
+        tr_lst = rows._tbl.tr_lst
+        for idx, row in enumerate(slice_of_rows):
+            assert tr_lst.index(row._tr) == start + idx
+            assert isinstance(row, _Row)
+
     def it_raises_on_indexed_access_out_of_range(self, rows_fixture):
         rows, row_count = rows_fixture
         with pytest.raises(IndexError):
@@ -699,6 +725,16 @@ class Describe_Rows(object):
         tbl = _tbl_bldr(rows=row_count, cols=2).element
         rows = _Rows(tbl, None)
         return rows, row_count
+
+    @pytest.fixture(params=[
+        (3, 1,  3, 2),
+        (3, 0, -1, 2),
+    ])
+    def slice_fixture(self, request):
+        row_count, start, end, expected_count = request.param
+        tbl = _tbl_bldr(rows=row_count, cols=2).element
+        rows = _Rows(tbl, None)
+        return rows, start, end, expected_count
 
     @pytest.fixture
     def table_fixture(self, table_):
