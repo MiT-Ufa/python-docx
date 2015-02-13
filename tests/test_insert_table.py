@@ -17,7 +17,7 @@ class TestAddTable(unittest.TestCase):
         assert (len(document.tables) == 1)
 
         para = document.paragraphs[0]
-        table = document.insert_table(3, 3, para)
+        table = document.insert_table(3, 3, para, style=None)
         for row_index in xrange(3):
             for column_index, cell in enumerate(table.row_cells(row_index)):
                 cell.text = str((row_index + 1) * (column_index + 1))

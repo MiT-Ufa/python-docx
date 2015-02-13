@@ -76,6 +76,9 @@ class Paragraph(Parented):
             paragraph.style = style
         return paragraph
 
+    def insert_table(self, elm):
+        self._p.append(elm)
+
     @property
     def paragraph_format(self):
         """
